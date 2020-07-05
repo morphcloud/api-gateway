@@ -1,2 +1,2 @@
 # api-gateway
-REST-GRPC API Gateway
+REST-gRPC API Gateway
