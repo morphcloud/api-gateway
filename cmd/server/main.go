@@ -1,8 +1,7 @@
-package main
+package server
 
 import (
 	"context"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
@@ -13,10 +12,12 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/joho/godotenv"
+
+	"github.com/morphcloud/api-gateway/internal/routes"
 )
 
 var (
-	appName, lisAddr string
+	appName, hostname, lisAddr string
 )
 
 func configureEnv() {
@@ -29,36 +30,17 @@ func configureEnv() {
 		appName = "api-gateway"
 	}
 
+	hostname = os.Getenv("HOSTNAME")
+	if hostname == "" {
+		hostname = "API GATEWAY"
+	}
+
 	lisAddr = os.Getenv("PORT")
 	if lisAddr == "" {
 		lisAddr = ":8080"
 	} else {
 		lisAddr = ":" + lisAddr
 	}
-}
-
-func serveReverseProxy(target string, w http.ResponseWriter, r *http.Request) {
-	resp, err := http.Get(target)
-	if err != nil {
-		log.Fatalln(err)
-	}
-
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		log.Fatalln(err)
-	}
-
-	w.Write(body)
-	return
-}
-
-func handleRequestAndRedirect(w http.ResponseWriter, r *http.Request) {
-	orderServicePort := os.Getenv("ORDER_SERVICE_PORT")
-	if orderServicePort == "" {
-		orderServicePort = "8080"
-	}
-	proxyURL := "http://localhost:" + orderServicePort + "/v1/orders"
-	serveReverseProxy(proxyURL, w, r)
 }
 
 func waitForShutdown(srv http.Server, l *log.Logger) {
@@ -73,17 +55,18 @@ func waitForShutdown(srv http.Server, l *log.Logger) {
 	srv.Shutdown(ctx)
 }
 
-func main() {
+func Execute() {
 	configureEnv()
 
 	l := log.New(os.Stdout, strings.ToUpper(appName)+" ", log.LstdFlags)
 
-	router := mux.NewRouter()
-	router.HandleFunc("/v1/orders", handleRequestAndRedirect)
+	r := mux.NewRouter()
+
+	routes.MapURLPathsToHandlers(r, l)
 
 	srv := http.Server{
 		Addr:         lisAddr,
-		Handler:      router,
+		Handler:      r,
 		ErrorLog:     l,
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 20 * time.Second,
@@ -95,7 +78,7 @@ func main() {
 			l.Fatalln(err)
 		}
 	}()
-	l.Printf("%s has been started on %s\n", appName, lisAddr)
+	l.Printf("%s is running on %s\n", appName, lisAddr)
 
 	waitForShutdown(srv, l)
 }
